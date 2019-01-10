@@ -876,7 +876,7 @@ static void solve_l2r_l1l2_svc(
 		index[i] = i;
 	}
 
-	while (iter < max_iter)
+	while (iter < 100000)
 	{
 		PGmax_new = -INF;
 		PGmin_new = INF;
@@ -976,11 +976,61 @@ static void solve_l2r_l1l2_svc(
 	for(i=0; i<l; i++)
 	{
 		v += alpha[i]*(alpha[i]*diag[GETI(i)] - 2);
-		if(alpha[i] > 0)
+		if(alpha[i] > 0 && alpha[i] < C)
 			++nSV;
 	}
+
 	info("Objective value = %lf\n",v/2);
 	info("nSV = %d\n",nSV);
+
+	double r,llb,lub,r1 = 0.,r2 = 0.,r3 = 0.,r4 = 0.,r5 = 0.,comp_min = 0.,comp_max=0.,tmp;
+	for (int i = 0; i < l; ++i) {
+		const schar yi = y[i];
+		feature_node * const xi = prob->x[i];
+
+		r = yi*sparse_operator::dot(w, xi)-1;
+		r += alpha[i]*diag[GETI(i)];
+		C = upper_bound[GETI(i)];
+
+		llb = (r > 0) ? r : 0;
+		lub = (-r > 0) ? -r : 0;
+
+		tmp = (r - llb + lub);
+		r1 += tmp * tmp;
+
+		tmp = alpha[i] - 0;
+		tmp = (tmp < 0) ? tmp : 0;
+		r2 += tmp*tmp;
+
+		r3 += (llb < 0) ? llb : 0;
+
+		tmp = alpha[i] - C;
+		tmp = (tmp > 0) ? tmp : 0;
+		r4  += tmp * tmp;
+
+		tmp = (lub < 0) ? lub : 0;
+		r5 += tmp * tmp;
+
+		comp_min += llb*(0 - alpha[i]);
+		comp_max += lub*(alpha[i] - C);
+	}
+	r1 = sqrt(r1);
+	r2 = sqrt(r2);
+	r3 = sqrt(r3);
+	r4 = sqrt(r4);
+	r5 = sqrt(r5);
+	comp_min = fabs(comp_min);
+	comp_max = fabs(comp_max);
+
+	double norm_b = sqrt(l);
+	printf("KKT conditions:\n");
+	printf("r = ||A*x - b - lambda_lb + lambda_ub|| = %.2e   rO/||b|| = %.2e\n",r1,r1 / norm_b);
+	printf("r = ||min(x-lb,0)||      = %.2e     r/||b|| = %.2e\n",r2,r2 / norm_b);
+	printf("r = ||min(lambda_lb,0)|| = %.2e     r/||b|| = %.2e\n",r3,r3 / norm_b);
+	printf("r = |lambda_lb'*(lb-x)|  = %.2e     r/||b|| = %.2e\n",comp_min,comp_min / norm_b);
+	printf("r = ||max(x-ub,0)||      = %.2e     r/||b|| = %.2e\n",r4,r4 / norm_b);
+	printf("r = ||min(lambda_ub,0)|| = %.2e     r/||b|| = %.2e\n",r5,r5 / norm_b);
+	printf("r = |lambda_ub'*(x-ub)|  = %.2e     r/||b|| = %.2e\n",comp_max,comp_max / norm_b);
 
 	delete [] QD;
 	delete [] alpha;
@@ -2849,7 +2899,7 @@ struct model *load_model(const char *model_file_name)
 	// parameters for training only won't be assigned, but arrays are assigned as NULL for safety
 	param.nr_weight = 0;
 	param.weight_label = NULL;
-	param.weight = NULL;	
+	param.weight = NULL;
 	param.init_sol = NULL;
 
 	model_->label = NULL;
@@ -3088,4 +3138,3 @@ void set_print_string_function(void (*print_func)(const char*))
 	else
 		liblinear_print_string = print_func;
 }
-
